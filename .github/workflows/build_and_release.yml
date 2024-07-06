@@ -13,7 +13,7 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  build-and-release:
     strategy:
       fail-fast: false
       matrix:
@@ -57,88 +57,62 @@ jobs:
         cp assets/LICENSE dist/assets/
       shell: bash
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: ParticlePlayground-${{ matrix.os }}-${{ matrix.arch }}
-        path: dist/*
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-    - uses: actions/checkout@v3
-
     - name: Install GitHub CLI
+      if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'
       run: |
-        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-        && sudo apt update \
-        && sudo apt install gh -y
-
-    - name: Check for existing release
-      id: check_release
-      run: |
-        if gh release view ${{ github.ref_name }} &> /dev/null; then
-          echo "exists=true" >> $GITHUB_OUTPUT
+        if [ "${{ runner.os }}" = "Linux" ]; then
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
+        elif [ "${{ runner.os }}" = "macOS" ]; then
+          brew install gh
         else
-          echo "exists=false" >> $GITHUB_OUTPUT
+          choco install gh
         fi
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Update existing release
-      if: steps.check_release.outputs.exists == 'true'
-      run: |
-        gh release edit ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --notes "Updated release for ${{ github.ref_name }}"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Create new release
-      if: steps.check_release.outputs.exists != 'true'
-      run: |
-        gh release create ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --notes "Release ${{ github.ref_name }}"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - uses: actions/download-artifact@v3
-      with:
-        path: artifacts
-
-    - name: List artifacts and contents
-      run: |
-        ls -R artifacts
       shell: bash
 
-    - name: Remove existing assets and upload new ones
+    - name: Upload to Release
+      if: startsWith(github.ref, 'refs/tags/v')
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Remove existing assets
-        existing_assets=$(gh release view ${{ github.ref_name }} --json assets -q '.assets[].name')
-        for asset in $existing_assets; do
-          gh release delete-asset ${{ github.ref_name }} "$asset" --yes
+        release_tag="${GITHUB_REF#refs/tags/}"
+        if ! gh release view "$release_tag" &>/dev/null; then
+          gh release create "$release_tag" --title "Release $release_tag" --notes "Release $release_tag"
+        fi
+        for file in dist/*; do
+          if [ -f "$file" ]; then
+            filename=$(basename "$file")
+            new_filename="${filename%.*}_${{ matrix.os }}-${{ matrix.arch }}.${filename##*.}"
+            gh release upload "$release_tag" "$file" --clobber
+          fi
         done
-        
-        # Upload new assets
-        for artifact_dir in artifacts/*; do
-          platform=$(basename "$artifact_dir" | cut -d'-' -f2,3)
-          for file in "$artifact_dir"/*; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              new_filename="${filename%.*}_${platform}.${filename##*.}"
-              echo "Uploading $file as $new_filename"
-              gh release upload ${{ github.ref_name }} "$file" --clobber --name "$new_filename"
-            fi
-          done
+      shell: bash
+
+    - name: Upload to Nightly
+      if: github.event_name == 'schedule'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if ! gh release view nightly &>/dev/null; then
+          gh release create nightly --title "Nightly Build" --notes "Automated nightly build" --prerelease
+        else
+          gh release edit nightly --title "Nightly Build" --notes "Updated nightly build"
+        fi
+        for file in dist/*; do
+          if [ -f "$file" ]; then
+            filename=$(basename "$file")
+            new_filename="${filename%.*}_${{ matrix.os }}-${{ matrix.arch }}.${filename##*.}"
+            gh release upload nightly "$file" --clobber
+          fi
         done
+      shell: bash
 
   cleanup:
     runs-on: ubuntu-latest
+    needs: build-and-release
+    if: always()
     steps:
     - uses: actions/checkout@v3
       with:
@@ -146,12 +120,10 @@ jobs:
 
     - name: Install GitHub CLI
       run: |
-        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-        && sudo apt update \
-        && sudo apt install gh -y
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt update
+        sudo apt install gh -y
 
     - name: Remove invalid releases
       env:
@@ -167,85 +139,3 @@ jobs:
         else
           echo "No releases found to clean up."
         fi
-
-  nightly:
-    needs: [build, cleanup]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install GitHub CLI
-      run: |
-        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-        && sudo apt update \
-        && sudo apt install gh -y
-
-    - name: Get latest commit hash
-      id: get_hash
-      run: echo "hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-
-    - name: Check for existing nightly tag
-      id: check_tag
-      run: |
-        git fetch --tags
-        if git rev-parse nightly >/dev/null 2>&1; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-          echo "current_hash=$(git rev-parse nightly)" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Update or create nightly tag
-      if: steps.check_tag.outputs.exists != 'true' || steps.check_tag.outputs.current_hash != steps.get_hash.outputs.hash
-      run: |
-        git config user.name github-actions
-        git config user.email github-actions@github.com
-        git tag -f nightly
-        git push origin nightly -f
-
-    - name: Create or update Nightly Release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        if gh release view nightly &> /dev/null; then
-          gh release edit nightly --title "Nightly Build" --notes "Updated nightly build"
-        else
-          gh release create nightly --title "Nightly Build" --notes "Automated nightly build" --prerelease
-        fi
-
-    - uses: actions/download-artifact@v3
-      with:
-        path: artifacts
-
-    - name: List artifacts and contents
-      run: |
-        ls -R artifacts
-      shell: bash
-
-    - name: Remove existing assets and upload new ones for Nightly
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        # Remove existing assets
-        existing_assets=$(gh release view nightly --json assets -q '.assets[].name')
-        for asset in $existing_assets; do
-          gh release delete-asset nightly "$asset" --yes
-        done
-        
-        # Upload new assets
-        for artifact_dir in artifacts/*; do
-          platform=$(basename "$artifact_dir" | cut -d'-' -f2,3)
-          for file in "$artifact_dir"/*; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              new_filename="${filename%.*}_${platform}.${filename##*.}"
-              echo "Uploading $file as $new_filename"
-              gh release upload nightly "$file" --clobber --name "$new_filename"
-            fi
-          done
-        done
