@@ -11,7 +11,7 @@ authors = [
 description = "A Particle Playground game similar to Powder Toy"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.7"
+requires-python = ">=3.11"
 dependencies = [
     "pygame",
 ]
