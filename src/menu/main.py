@@ -1,17 +1,18 @@
-# ./src/menu.py
 import pygame
 from src.storage import storage
 from src.logger import get_logger
+from src.menu.settings import SettingsMenu
 
 logger = get_logger(__name__)
 
-class Menu:
+class MainMenu:
     def __init__(self):
         self.font = pygame.font.Font(None, 36)
         self.options = ["Back to Game", "Settings", "Quit Game"]
         self.selected = 0
         self.option_rects = []
-        logger.info("Menu initialized")
+        self.settings_menu = SettingsMenu()
+        logger.info("Main menu initialized")
 
     def draw(self, screen):
         menu_surface = pygame.Surface((300, 200))
@@ -40,3 +41,14 @@ class Menu:
 
     def get_selected_option(self):
         return self.options[self.selected]
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            clicked_option = self.check_click(event.pos)
+            if clicked_option == "Settings":
+                return self.settings_menu
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                if self.options[self.selected] == "Settings":
+                    return self.settings_menu
+        return self

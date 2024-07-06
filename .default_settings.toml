@@ -5,3 +5,7 @@ height = 600
 [cursor]
 size = 5
 max_size = 50
+
+[graphics.palette]
+icon_size = 32
+palette_group_selected = "powders"

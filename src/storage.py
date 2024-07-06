@@ -43,7 +43,7 @@ class Storage:
                 "selected_particle": "dust",
                 "graphics": {
                     "palette": {
-                        "icon_size": 64,
+                        "icon_size": 32,
                         "palette_group_selected": "powders"
                     }
                 }

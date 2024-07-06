@@ -2,7 +2,7 @@ import pygame
 import sys
 import os
 from src.input_handler import InputHandler
-from src.menu import Menu
+from src.menu.main import MainMenu
 from src.storage import storage
 from src.logger import get_logger
 from src.palette import initialize_palette
@@ -42,7 +42,8 @@ def main():
 
     # Create input handler, menu, and palette
     input_handler = InputHandler()
-    menu = Menu()
+    main_menu = MainMenu()
+    current_menu = main_menu
     palette = initialize_palette()
 
     # Set up the clock for a consistent frame rate
@@ -65,27 +66,22 @@ def main():
                     storage.set_setting(height, "window", "height")
                     logger.info(f"Window resized to {width}x{height}")
                 if input_handler.is_menu_open():
-                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        menu_action = menu.check_click(event.pos)
-                        if menu_action:
-                            logger.debug(f"Menu action: {menu_action}")
-                            if menu_action == "Back to Game":
-                                input_handler.show_menu = False
-                            elif menu_action == "Quit Game":
-                                running = False
-                    elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                        menu_action = menu.get_selected_option()
-                        logger.debug(f"Menu action (keyboard): {menu_action}")
-                        if menu_action == "Back to Game":
+                    result = current_menu.handle_event(event)
+                    if isinstance(result, str):
+                        if result == "MainMenu":
+                            current_menu = main_menu
+                        elif result == "Back to Game":
                             input_handler.show_menu = False
-                        elif menu_action == "Quit Game":
+                        elif result == "Quit Game":
                             running = False
+                    elif result != current_menu:
+                        current_menu = result
                 else:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         palette.check_click(event.pos)
 
             # Handle input
-            input_handler.handle_events(events, menu)
+            input_handler.handle_events(events, main_menu)
 
             # Fill the screen with black
             screen.fill((0, 0, 0))
@@ -95,7 +91,7 @@ def main():
 
             # Draw the menu if it's open
             if input_handler.is_menu_open():
-                menu.draw(screen)
+                current_menu.draw(screen)
             else:
                 palette.check_hover(pygame.mouse.get_pos())  # Check hover status
                 palette.draw(screen)

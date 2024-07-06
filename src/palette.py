@@ -30,7 +30,7 @@ class Palette:
         self.selected_item = None
         self.hovered_item = None
         self.rects = []
-        self.icon_size = storage.get_setting("graphics", "palette", "icon_size", default=64)
+        self.icon_size = storage.get_setting("graphics", "palette", "icon_size", default=32)
         self.selected_group = storage.get_setting("graphics", "palette", "palette_group_selected", default="powders")
         self.invisible_barriers = []
 
