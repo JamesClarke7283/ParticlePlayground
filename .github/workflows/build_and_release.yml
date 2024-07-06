@@ -13,7 +13,7 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  build-and-upload:
     strategy:
       fail-fast: false
       matrix:
@@ -58,61 +58,99 @@ jobs:
         mv "$main_file" "$new_name"
       shell: bash
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: ParticlePlayground-${{ matrix.os }}-${{ matrix.arch }}
-        path: dist/ParticlePlayground_*
-
-  create-release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Download all artifacts
-      uses: actions/download-artifact@v3
-      with:
-        path: artifacts
-
-    - name: Generate SHA256SUMS
-      run: |
-        cd artifacts
-        find . -type f -not -name "SHA256SUMS" -exec sha256sum {} + > SHA256SUMS
-        mv SHA256SUMS ..
-
     - name: Install GitHub CLI
       run: |
-        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-        && sudo apt update \
-        && sudo apt install gh -y
+        if [ "${{ runner.os }}" = "Linux" ]; then
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
+        elif [ "${{ runner.os }}" = "macOS" ]; then
+          brew install gh
+        else
+          choco install gh
+        fi
+      shell: bash
 
-    - name: Create/Update Release
+    - name: Upload artifact to release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         if [[ $GITHUB_REF == refs/tags/* ]]; then
           release_tag="${GITHUB_REF#refs/tags/}"
-          release_name="Release $release_tag"
-          is_prerelease=false
         else
           release_tag="nightly"
-          release_name="Nightly Build"
-          is_prerelease=true
         fi
 
         if ! gh release view "$release_tag" &>/dev/null; then
-          gh release create "$release_tag" --title "$release_name" --notes "$release_name" --prerelease=$is_prerelease
-        else
-          gh release edit "$release_tag" --title "$release_name" --notes "$release_name" --prerelease=$is_prerelease
+          gh release create "$release_tag" --title "Release $release_tag" --notes "Placeholder for release notes" --prerelease
         fi
 
-        gh release upload "$release_tag" artifacts/**/* SHA256SUMS --clobber
+        gh release upload "$release_tag" dist/ParticlePlayground_* --clobber
+      shell: bash
+
+  create-release:
+    needs: build-and-upload
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Generate SHA256SUMS
+      run: |
+        mkdir artifacts
+        gh release download $(if [[ $GITHUB_REF == refs/tags/* ]]; then echo "${GITHUB_REF#refs/tags/}"; else echo "nightly"; fi) -D artifacts
+        cd artifacts
+        sha256sum * > SHA256SUMS
+        mv SHA256SUMS ..
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Generate Release Notes
+      id: release_notes
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          release_tag="${GITHUB_REF#refs/tags/}"
+          previous_tag=$(git describe --tags --abbrev=0 $release_tag^ 2>/dev/null || echo '')
+          if [ -z "$previous_tag" ]; then
+            commit_range=$(git rev-list --max-parents=0 HEAD)..${release_tag}
+          else
+            commit_range=$previous_tag..$release_tag
+          fi
+        else
+          release_tag="nightly"
+          previous_nightly=$(git describe --tags --match "nightly" --abbrev=0 2>/dev/null || echo '')
+          if [ -z "$previous_nightly" ]; then
+            exit 0  # No previous nightly, no need to create a new one
+          fi
+          commit_range=$previous_nightly..HEAD
+        fi
+
+        echo "# Release Commit Summary" > RELEASE_NOTES.md
+        git log --reverse --format="[%h] %s" $commit_range >> RELEASE_NOTES.md
+        echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+        cat RELEASE_NOTES.md >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Update Release
+      if: steps.release_notes.outputs.release_notes != ''
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          release_tag="${GITHUB_REF#refs/tags/}"
+          is_prerelease=false
+        else
+          release_tag="nightly"
+          is_prerelease=true
+        fi
+
+        gh release edit "$release_tag" --notes "${{ steps.release_notes.outputs.release_notes }}" --prerelease=$is_prerelease
+        gh release upload "$release_tag" SHA256SUMS --clobber
 
         if [[ "$release_tag" == "nightly" ]]; then
           git config user.name github-actions
@@ -136,8 +174,8 @@ jobs:
         curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
         && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
         && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-        && sudo apt update \
-        && sudo apt install gh -y
+        sudo apt update
+        sudo apt install gh -y
 
     - name: Remove invalid releases and handle deleted tags
       env:
