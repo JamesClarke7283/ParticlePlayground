@@ -17,11 +17,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        arch: [x86_64, arm64]
-        exclude:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-latest
+            arch: arm64
+          - os: ubuntu-latest
+            arch: riscv64
+          - os: macos-latest
+            arch: x86_64
+          - os: macos-latest
+            arch: arm64
           - os: windows-latest
-            arch: arm64  # Windows doesn't support ARM64 builds natively in Actions
+            arch: x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -42,7 +50,14 @@ jobs:
         pip install -r requirements.txt
 
     - name: Build with PyInstaller
-      run: pyinstaller ParticlePlayground.spec
+      run: |
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.arch }}" = "riscv64" ]; then
+          # Add RISC-V specific build steps here if needed
+          pyinstaller --target-arch riscv64 ParticlePlayground.spec
+        else
+          pyinstaller ParticlePlayground.spec
+        fi
+      shell: bash
 
     - name: Copy LICENSE files
       run: |
@@ -55,7 +70,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: ParticlePlayground-${{ matrix.os }}-${{ matrix.arch }}
-        path: dist/ParticlePlayground*
+        path: dist/*
 
   release:
     needs: build
@@ -75,13 +90,17 @@ jobs:
         prerelease: false
 
     - uses: actions/download-artifact@v3
+      with:
+        path: artifacts
 
     - name: Upload Release Assets
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        for asset in ParticlePlayground-*/*; do
-          gh release upload ${{ github.ref_name }} "$asset" --clobber
+        for artifact in artifacts/*; do
+          for file in "$artifact"/*; do
+            gh release upload ${{ github.ref_name }} "$file" --clobber
+          done
         done
 
   cleanup:
@@ -142,12 +161,16 @@ jobs:
 
     - uses: actions/download-artifact@v3
       if: steps.check_tag.outputs.exists != 'true' || steps.check_tag.outputs.current_hash != steps.get_hash.outputs.hash
+      with:
+        path: artifacts
 
     - name: Upload Nightly Release Assets
       if: steps.check_tag.outputs.exists != 'true' || steps.check_tag.outputs.current_hash != steps.get_hash.outputs.hash
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        for asset in ParticlePlayground-*/*; do
-          gh release upload nightly "$asset" --clobber
+        for artifact in artifacts/*; do
+          for file in "$artifact"/*; do
+            gh release upload nightly "$file" --clobber
+          done
         done
