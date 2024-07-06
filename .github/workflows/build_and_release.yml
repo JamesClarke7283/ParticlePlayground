@@ -71,8 +71,26 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Create Release
-      id: create_release
+    - name: Check for existing release
+      id: check_release
+      run: |
+        if gh release view ${{ github.ref_name }} &> /dev/null; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update existing release
+      if: steps.check_release.outputs.exists == 'true'
+      run: |
+        gh release edit ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --notes "Updated release for ${{ github.ref_name }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create new release
+      if: steps.check_release.outputs.exists != 'true'
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.ref }}
@@ -101,16 +119,29 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Install GitHub CLI
+      run: |
+        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+        && sudo apt update \
+        && sudo apt install gh -y
+
     - name: Remove invalid releases
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        for release in $(gh release list --limit 1000 | grep -v "Nightly Build" | awk '{print $1, $3}'); do
-          tag=$(echo $release | cut -d' ' -f2)
-          if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            gh release delete $tag --yes
-          fi
-        done
+        releases=$(gh release list --limit 1000 | grep -v "Nightly Build" | awk '{print $1, $3}')
+        if [ -n "$releases" ]; then
+          echo "$releases" | while read -r tag rest; do
+            if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              gh release delete $tag --yes
+            fi
+          done
+        else
+          echo "No releases found to clean up."
+        fi
 
   nightly:
     needs: [build, cleanup]
@@ -143,20 +174,21 @@ jobs:
         git tag -f nightly
         git push origin nightly -f
 
-    - name: Create Nightly Release
-      if: steps.check_tag.outputs.exists != 'true' || steps.check_tag.outputs.current_hash != steps.get_hash.outputs.hash
+    - name: Create or update Nightly Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release create nightly --title "Nightly Build" --notes "Automated nightly build" --prerelease
+        if gh release view nightly &> /dev/null; then
+          gh release edit nightly --title "Nightly Build" --notes "Updated nightly build"
+        else
+          gh release create nightly --title "Nightly Build" --notes "Automated nightly build" --prerelease
+        fi
 
     - uses: actions/download-artifact@v3
-      if: steps.check_tag.outputs.exists != 'true' || steps.check_tag.outputs.current_hash != steps.get_hash.outputs.hash
       with:
         path: artifacts
 
     - name: Upload Nightly Release Assets
-      if: steps.check_tag.outputs.exists != 'true' || steps.check_tag.outputs.current_hash != steps.get_hash.outputs.hash
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
