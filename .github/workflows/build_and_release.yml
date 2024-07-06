@@ -4,11 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
-  delete:
-    tags:
-      - 'v*'
   schedule:
     - cron: '0 0 * * *'  # Run at midnight UTC
   workflow_dispatch:  # Allow manual triggering
@@ -18,7 +13,7 @@ permissions:
   packages: write
 
 jobs:
-  build-and-release:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -55,67 +50,80 @@ jobs:
     - name: Build with PyInstaller
       run: pyinstaller ParticlePlayground.spec
 
-    - name: Rename and checksum artifacts
+    - name: Rename artifacts
       run: |
         cd dist
         main_file=$(ls ParticlePlayground* | grep -v "LICENSE")
         new_name="ParticlePlayground_${{ matrix.os }}-${{ matrix.arch }}${main_file##ParticlePlayground}"
         mv "$main_file" "$new_name"
-        sha256sum "$new_name" > "${new_name}.sha256"
       shell: bash
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ParticlePlayground-${{ matrix.os }}-${{ matrix.arch }}
+        path: dist/ParticlePlayground_*
+
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Generate SHA256SUMS
+      run: |
+        cd artifacts
+        find . -type f -not -name "SHA256SUMS" -exec sha256sum {} + > SHA256SUMS
+        mv SHA256SUMS ..
 
     - name: Install GitHub CLI
       run: |
-        if [ "${{ runner.os }}" = "Linux" ]; then
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          sudo apt update
-          sudo apt install gh -y
-        elif [ "${{ runner.os }}" = "macOS" ]; then
-          brew install gh
-        else
-          choco install gh
-        fi
-      shell: bash
+        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+        && sudo apt update \
+        && sudo apt install gh -y
 
-    - name: Upload to Release
-      if: startsWith(github.ref, 'refs/tags/v')
+    - name: Create/Update Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        release_tag="${GITHUB_REF#refs/tags/}"
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          release_tag="${GITHUB_REF#refs/tags/}"
+          release_name="Release $release_tag"
+          is_prerelease=false
+        else
+          release_tag="nightly"
+          release_name="Nightly Build"
+          is_prerelease=true
+        fi
+
         if ! gh release view "$release_tag" &>/dev/null; then
-          gh release create "$release_tag" --title "Release $release_tag" --notes "Release $release_tag"
+          gh release create "$release_tag" --title "$release_name" --notes "$release_name" --prerelease=$is_prerelease
         else
-          gh release edit "$release_tag" --title "Release $release_tag" --notes "Release $release_tag"
+          gh release edit "$release_tag" --title "$release_name" --notes "$release_name" --prerelease=$is_prerelease
         fi
-        gh release upload "$release_tag" dist/ParticlePlayground_* --clobber
-      shell: bash
 
-    - name: Upload to Nightly
-      if: github.event_name == 'schedule'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        last_commit=$(git rev-parse HEAD)
-        last_nightly=$(git rev-parse nightly 2>/dev/null || echo '')
-        if [ "$last_commit" != "$last_nightly" ]; then
-          if ! gh release view nightly &>/dev/null; then
-            gh release create nightly --title "Nightly Build" --notes "Automated nightly build" --prerelease
-          else
-            gh release edit nightly --title "Nightly Build" --notes "Updated nightly build"
-          fi
-          gh release upload nightly dist/ParticlePlayground_* --clobber
+        gh release upload "$release_tag" artifacts/**/* SHA256SUMS --clobber
+
+        if [[ "$release_tag" == "nightly" ]]; then
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git tag -f nightly
           git push origin nightly -f
-        else
-          echo "No new commits since last nightly build. Skipping."
         fi
-      shell: bash
 
   cleanup:
     runs-on: ubuntu-latest
-    needs: build-and-release
+    needs: create-release
     if: always()
     steps:
     - uses: actions/checkout@v3
@@ -124,10 +132,12 @@ jobs:
 
     - name: Install GitHub CLI
       run: |
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-        sudo apt update
-        sudo apt install gh -y
+        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+        && sudo apt update \
+        && sudo apt install gh -y
 
     - name: Remove invalid releases and handle deleted tags
       env:
