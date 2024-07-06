@@ -126,10 +126,13 @@ jobs:
         
         # Upload new assets
         for artifact_dir in artifacts/*; do
+          platform=$(basename "$artifact_dir" | cut -d'-' -f2,3)
           for file in "$artifact_dir"/*; do
             if [ -f "$file" ]; then
-              echo "Uploading $file"
-              gh release upload ${{ github.ref_name }} "$file" --clobber
+              filename=$(basename "$file")
+              new_filename="${filename%.*}_${platform}.${filename##*.}"
+              echo "Uploading $file as $new_filename"
+              gh release upload ${{ github.ref_name }} "$file" --clobber --name "$new_filename"
             fi
           done
         done
@@ -236,10 +239,13 @@ jobs:
         
         # Upload new assets
         for artifact_dir in artifacts/*; do
+          platform=$(basename "$artifact_dir" | cut -d'-' -f2,3)
           for file in "$artifact_dir"/*; do
             if [ -f "$file" ]; then
-              echo "Uploading $file"
-              gh release upload nightly "$file" --clobber
+              filename=$(basename "$file")
+              new_filename="${filename%.*}_${platform}.${filename##*.}"
+              echo "Uploading $file as $new_filename"
+              gh release upload nightly "$file" --clobber --name "$new_filename"
             fi
           done
         done
