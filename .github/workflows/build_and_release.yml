@@ -71,6 +71,15 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Install GitHub CLI
+      run: |
+        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+        && sudo apt update \
+        && sudo apt install gh -y
+
     - name: Check for existing release
       id: check_release
       run: |
@@ -91,21 +100,26 @@ jobs:
 
     - name: Create new release
       if: steps.check_release.outputs.exists != 'true'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ github.ref }}
-        name: Release ${{ github.ref_name }}
-        draft: false
-        prerelease: false
+      run: |
+        gh release create ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --notes "Release ${{ github.ref_name }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - uses: actions/download-artifact@v3
       with:
         path: artifacts
 
-    - name: Upload Release Assets
+    - name: Remove existing assets and upload new ones
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        # Remove existing assets
+        existing_assets=$(gh release view ${{ github.ref_name }} --json assets -q '.assets[].name')
+        for asset in $existing_assets; do
+          gh release delete-asset ${{ github.ref_name }} "$asset" --yes
+        done
+        
+        # Upload new assets
         for artifact in artifacts/*; do
           find "$artifact" -type f | while read -r file; do
             gh release upload ${{ github.ref_name }} "$file" --clobber
@@ -151,6 +165,15 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Install GitHub CLI
+      run: |
+        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+        && sudo apt update \
+        && sudo apt install gh -y
+
     - name: Get latest commit hash
       id: get_hash
       run: echo "hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
@@ -188,10 +211,17 @@ jobs:
       with:
         path: artifacts
 
-    - name: Upload Nightly Release Assets
+    - name: Remove existing assets and upload new ones for Nightly
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        # Remove existing assets
+        existing_assets=$(gh release view nightly --json assets -q '.assets[].name')
+        for asset in $existing_assets; do
+          gh release delete-asset nightly "$asset" --yes
+        done
+        
+        # Upload new assets
         for artifact in artifacts/*; do
           find "$artifact" -type f | while read -r file; do
             gh release upload nightly "$file" --clobber
