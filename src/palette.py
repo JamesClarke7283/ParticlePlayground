@@ -2,7 +2,7 @@
 import pygame
 from src.storage import storage
 from src.logger import get_logger
-from src.utils.icon import save_icon, frameify_icon
+from src.utils.icon import save_icon, frameify_icon, get_icon
 
 logger = get_logger(__name__)
 
@@ -11,9 +11,14 @@ class PaletteItem:
         self.id = id
         self.name = name
         self.icon_path = icon_path
-        self.icon = pygame.image.load(icon_path)
         self.frame_path = frame_path
+        self.icon = None
         self.subitems = []
+
+    def load_icon(self):
+        if self.icon is None:
+            cache_relative_path = f"icons/{self.id}.png"
+            self.icon = get_icon(self.icon_path, self.frame_path, cache_relative_path)
 
     def add_subitem(self, subitem):
         self.subitems.append(subitem)
@@ -39,27 +44,33 @@ class Palette:
         y = 20
         self.rects = []
         for item in self.items:
+            item.load_icon()
             item_rect = pygame.Rect(x, y, self.icon_size, self.icon_size)
             self.rects.append((item_rect, item))
-            icon = pygame.transform.scale(item.icon, (self.icon_size, self.icon_size))
-            screen.blit(icon, item_rect.topleft)
+            icon_surface = pygame.image.fromstring(item.icon.tobytes(), item.icon.size, item.icon.mode)
+            icon_surface = pygame.transform.scale(icon_surface, (self.icon_size, self.icon_size))
+            screen.blit(icon_surface, item_rect.topleft)
             if item_rect.collidepoint(pygame.mouse.get_pos()):
                 self.hovered_item = item
                 self.draw_text(screen, item.name, item_rect.left - 10, item_rect.centery, align="right")
             y += self.icon_size + 10
         if self.selected_item:
-            self.draw_subitems(screen, self.selected_item)
+            self.draw_subitems(screen)
 
-    def draw_subitems(self, screen, item):
-        subitem_x = screen.get_width() - self.icon_size - 20
+    def draw_subitems(self, screen):
+        if not self.selected_item:
+            return
+        subitem_x = screen.get_width() - (2 * self.icon_size) - 30
         subitem_y = screen.get_height() - self.icon_size - 10
-        for subitem in reversed(item.subitems):
+        for subitem in reversed(self.selected_item.subitems):
+            subitem.load_icon()
             subitem_rect = pygame.Rect(subitem_x, subitem_y, self.icon_size, self.icon_size)
             self.rects.append((subitem_rect, subitem))
-            icon = pygame.transform.scale(subitem.icon, (self.icon_size, self.icon_size))
-            screen.blit(icon, subitem_rect.topleft)
+            icon_surface = pygame.image.fromstring(subitem.icon.tobytes(), subitem.icon.size, subitem.icon.mode)
+            icon_surface = pygame.transform.scale(icon_surface, (self.icon_size, self.icon_size))
+            screen.blit(icon_surface, subitem_rect.topleft)
             if subitem_rect.collidepoint(pygame.mouse.get_pos()):
-                self.draw_text(screen, subitem.name, subitem_rect.left + self.icon_size // 2, subitem_rect.top - 10, align="center")
+                self.draw_text(screen, subitem.name, subitem_rect.left + self.icon_size // 2, subitem_rect.top - 25, align="center")
             subitem_x -= self.icon_size + 10
 
     def draw_text(self, screen, text, x, y, align="left"):

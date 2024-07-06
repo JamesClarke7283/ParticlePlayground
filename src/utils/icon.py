@@ -1,11 +1,30 @@
-# ./src/utils/icon.py
 from PIL import Image
 import os
 from appdirs import AppDirs
 from src.storage import storage
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 dirs = AppDirs("ParticlePlayground")
 icon_size = storage.get_setting("graphics", "palette", "icon_size", default=64)
+
+def process_and_cache_icon(icon_path, frame_path, cache_relative_path):
+    cache_path = os.path.join(dirs.user_cache_dir, cache_relative_path)
+    
+    if not os.path.exists(cache_path):
+        logger.info(f"Generating cached icon for {icon_path}")
+        framed_icon = frameify_icon(icon_path, frame_path)
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        framed_icon.save(cache_path, "PNG")
+    else:
+        logger.debug(f"Using cached icon from {cache_path}")
+    
+    return cache_path
+
+def get_icon(icon_path, frame_path, cache_relative_path):
+    cache_path = process_and_cache_icon(icon_path, frame_path, cache_relative_path)
+    return Image.open(cache_path).convert("RGBA")
 
 def get_effective_bounding_box(image):
     alpha = image.split()[3]  # Get the alpha channel
@@ -36,39 +55,28 @@ def frameify_icon(icon_path, frame_path, padding=10):
     frame_bbox = get_effective_bounding_box(frame)
     frame_effective = frame.crop(frame_bbox)
 
-    icon_effective_size = get_effective_size(icon)
-    frame_effective_size = get_effective_size(frame)
+    frame_size = frame.size
+    max_icon_width = frame_size[0] - padding * 2
+    max_icon_height = frame_size[1] - padding * 2
 
-    max_icon_width = frame_effective_size[0] - padding * 2
-    max_icon_height = frame_effective_size[1] - padding * 2
-
-    icon_ratio = icon_effective_size[0] / icon_effective_size[1]
+    icon_ratio = icon_effective.width / icon_effective.height
     if max_icon_width / icon_ratio <= max_icon_height:
         new_icon_width = max_icon_width
-        new_icon_height = max_icon_width / icon_ratio
+        new_icon_height = int(max_icon_width / icon_ratio)
     else:
         new_icon_height = max_icon_height
-        new_icon_width = max_icon_height * icon_ratio
+        new_icon_width = int(max_icon_height * icon_ratio)
 
-    new_icon_size = (int(new_icon_width), int(new_icon_height))
-    
-    resized_icon = resize_image(icon, new_icon_size[0], new_icon_size[1])
+    resized_icon = resize_image(icon_effective, new_icon_width, new_icon_height)
 
-    framed_icon = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+    framed_icon = Image.new("RGBA", frame_size, (0, 0, 0, 0))
 
     paste_position = (
-        (frame.size[0] - resized_icon.size[0]) // 2,
-        (frame.size[1] - resized_icon.size[1]) // 2
+        (frame_size[0] - resized_icon.width) // 2,
+        (frame_size[1] - resized_icon.height) // 2
     )
     
     framed_icon.paste(resized_icon, paste_position, resized_icon)
     framed_icon = Image.alpha_composite(framed_icon, frame)
 
     return resize_image(framed_icon, icon_size, icon_size)
-
-def process_and_cache_icon(icon_path, frame_path, cache_relative_path):
-    cache_path = os.path.join(dirs.user_cache_dir, cache_relative_path)
-    if not os.path.exists(cache_path):
-        framed_icon = frameify_icon(icon_path, frame_path)
-        save_icon(framed_icon, cache_relative_path)
-    return cache_path
