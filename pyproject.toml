@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "particleplayground"
+version = "0.0.1"
+authors = [
+    {name = "James David Clarke", email = "james@jamesdavidclarke.com"},
+]
+description = "A Particle Playground game similar to Powder Toy"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.7"
+dependencies = [
+    "pygame",
+]
+
+[project.scripts]
+particleplayground = "particleplayground.game:main"
+
+[project.optional-dependencies]
+dev = [
+    "sphinx",
+    "black",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py37']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
