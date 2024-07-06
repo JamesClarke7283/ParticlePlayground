@@ -22,8 +22,6 @@ jobs:
             arch: x86_64
           - os: ubuntu-latest
             arch: arm64
-          - os: ubuntu-latest
-            arch: riscv64
           - os: macos-latest
             arch: x86_64
           - os: macos-latest
@@ -50,14 +48,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Build with PyInstaller
-      run: |
-        if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.arch }}" = "riscv64" ]; then
-          # Add RISC-V specific build steps here if needed
-          pyinstaller --target-arch riscv64 ParticlePlayground.spec
-        else
-          pyinstaller ParticlePlayground.spec
-        fi
-      shell: bash
+      run: pyinstaller ParticlePlayground.spec
 
     - name: Copy LICENSE files
       run: |
