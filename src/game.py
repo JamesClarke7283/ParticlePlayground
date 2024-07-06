@@ -1,5 +1,6 @@
 import pygame
 import sys
+import os
 from src.input_handler import InputHandler
 from src.menu import Menu
 from src.storage import storage
@@ -9,6 +10,15 @@ logger = get_logger(__name__)
 
 def main():
     logger.info("Game starting")
+    
+    # Check if we're running in a PyInstaller bundle
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        is_development = False
+    else:
+        is_development = True
+        from src.hot_reload import start_hot_reloading, stop_hot_reloading
+        observer = start_hot_reloading(__name__)
+
     # Initialize Pygame
     pygame.init()
     logger.debug("Pygame initialized")
@@ -87,7 +97,7 @@ def main():
 
             # Cap the frame rate
             clock.tick(60)
-            logger.debug(f"FPS: {clock.get_fps():.2f}")
+            logger.trace(f"FPS: {clock.get_fps():.2f}")
 
     except KeyboardInterrupt:
         logger.info("Game interrupted by keyboard")
@@ -104,6 +114,8 @@ def main():
         storage.save_settings()
         # Quit Pygame
         pygame.quit()
+        if is_development:
+            stop_hot_reloading(observer)
         logger.info("Game exited")
         sys.exit()
 

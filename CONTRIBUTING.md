@@ -43,6 +43,16 @@ To set up your development environment, follow these steps:
    python3 -m src.game
    ```
 
+### Logging
+For debugging you can set the log level using a `.env` file in the current working directory via the environment variable `LOG_LEVEL` or just by adding the environment variable to the command like so `LOG_LEVEL=DEBUG python3 -m src.game`
+
+You can use the following log levels:
+- INFO
+- WARNING
+- ERROR
+- DEBUG
+- TRACE (trace spits out everything)
+
 ### Contribution Standards
 
 - **Licensing**: All contributions must be under the CC0 license with a fallback to the Apache 2.0 license.

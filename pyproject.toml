@@ -26,6 +26,7 @@ particleplayground = "src.game:main"
 dev = [
     "sphinx",
     "black",
+    "watchdog"
 ]
 
 [tool.setuptools]
