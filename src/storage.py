@@ -1,3 +1,4 @@
+# ./src/storage.py
 import os
 import tomllib
 import tomli_w
@@ -38,7 +39,14 @@ class Storage:
             logger.error(f"Error reading {self.default_settings_file}. Using hardcoded default settings.")
             default_settings = {
                 "cursor": {"size": 5, "max_size": 50},
-                "window": {"width": 800, "height": 600}
+                "window": {"width": 800, "height": 600},
+                "selected_particle": "dust",
+                "graphics": {
+                    "palette": {
+                        "icon_size": 64,
+                        "palette_group_selected": "powders"
+                    }
+                }
             }
             self.save_settings(default_settings)
             return default_settings

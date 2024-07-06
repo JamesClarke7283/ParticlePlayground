@@ -16,7 +16,8 @@ dependencies = [
     "pygame",
     "appdirs",
     "python-dotenv",
-    "tomli-w"
+    "tomli-w",
+    "pillow"
 ]
 
 [project.scripts]

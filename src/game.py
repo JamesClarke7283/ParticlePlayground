@@ -5,12 +5,13 @@ from src.input_handler import InputHandler
 from src.menu import Menu
 from src.storage import storage
 from src.logger import get_logger
+from src.palette import initialize_palette
 
 logger = get_logger(__name__)
 
 def main():
     logger.info("Game starting")
-    
+
     # Check if we're running in a PyInstaller bundle
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
         is_development = False
@@ -39,9 +40,10 @@ def main():
     screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
     pygame.display.set_caption("Particle Playground")
 
-    # Create input handler and menu
+    # Create input handler, menu, and palette
     input_handler = InputHandler()
     menu = Menu()
+    palette = initialize_palette()
 
     # Set up the clock for a consistent frame rate
     clock = pygame.time.Clock()
@@ -78,6 +80,9 @@ def main():
                             input_handler.show_menu = False
                         elif menu_action == "Quit Game":
                             running = False
+                else:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        palette.check_click(event.pos)
 
             # Handle input
             input_handler.handle_events(events, menu)
@@ -91,6 +96,12 @@ def main():
             # Draw the menu if it's open
             if input_handler.is_menu_open():
                 menu.draw(screen)
+            else:
+                palette.check_hover(pygame.mouse.get_pos())  # Check hover status
+                palette.draw(screen)
+
+            # Update the invisible barriers
+            palette.update_invisible_barriers(screen)
 
             # Update the display
             pygame.display.flip()
