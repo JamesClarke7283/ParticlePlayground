@@ -1,1 +1,4 @@
 pygame
+appdirs
+python-dotenv
+tomli-w

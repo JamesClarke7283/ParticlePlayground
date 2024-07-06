@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
-
-
 a = Analysis(
     ['src/game.py'],
     pathex=[],
     binaries=[],
-    datas=[('LICENSE', '.'), ('assets', 'assets')],
+    datas=[
+        ('LICENSE', '.'), 
+        ('assets', 'assets'),
+        ('.default_settings.toml', '.')
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -15,7 +17,6 @@ a = Analysis(
     optimize=2,
 )
 pyz = PYZ(a.pure)
-
 exe = EXE(
     pyz,
     a.scripts,
