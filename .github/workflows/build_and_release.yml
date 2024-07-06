@@ -57,6 +57,19 @@ jobs:
         cp assets/LICENSE dist/assets/
       shell: bash
 
+    - name: Rename artifacts
+      run: |
+        cd dist
+        for file in *; do
+          if [ -f "$file" ]; then
+            extension="${file##*.}"
+            filename="${file%.*}"
+            new_filename="${filename}_${{ matrix.os }}-${{ matrix.arch }}.${extension}"
+            mv "$file" "$new_filename"
+          fi
+        done
+      shell: bash
+
     - name: Install GitHub CLI
       if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule'
       run: |
@@ -83,8 +96,6 @@ jobs:
         fi
         for file in dist/*; do
           if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            new_filename="${filename%.*}_${{ matrix.os }}-${{ matrix.arch }}.${filename##*.}"
             gh release upload "$release_tag" "$file" --clobber
           fi
         done
@@ -102,8 +113,6 @@ jobs:
         fi
         for file in dist/*; do
           if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            new_filename="${filename%.*}_${{ matrix.os }}-${{ matrix.arch }}.${filename##*.}"
             gh release upload nightly "$file" --clobber
           fi
         done
