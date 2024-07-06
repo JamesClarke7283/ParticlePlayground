@@ -109,6 +109,11 @@ jobs:
       with:
         path: artifacts
 
+    - name: List artifacts and contents
+      run: |
+        ls -R artifacts
+      shell: bash
+
     - name: Remove existing assets and upload new ones
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -120,9 +125,12 @@ jobs:
         done
         
         # Upload new assets
-        for artifact in artifacts/*; do
-          find "$artifact" -type f | while read -r file; do
-            gh release upload ${{ github.ref_name }} "$file" --clobber
+        for artifact_dir in artifacts/*; do
+          for file in "$artifact_dir"/*; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file"
+              gh release upload ${{ github.ref_name }} "$file" --clobber
+            fi
           done
         done
 
@@ -211,6 +219,11 @@ jobs:
       with:
         path: artifacts
 
+    - name: List artifacts and contents
+      run: |
+        ls -R artifacts
+      shell: bash
+
     - name: Remove existing assets and upload new ones for Nightly
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -222,8 +235,11 @@ jobs:
         done
         
         # Upload new assets
-        for artifact in artifacts/*; do
-          find "$artifact" -type f | while read -r file; do
-            gh release upload nightly "$file" --clobber
+        for artifact_dir in artifacts/*; do
+          for file in "$artifact_dir"/*; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file"
+              gh release upload nightly "$file" --clobber
+            fi
           done
         done
