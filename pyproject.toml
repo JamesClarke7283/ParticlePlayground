@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "particleplayground"
-version = "0.0.1"
+dynamic = ["version"]
 authors = [
     {name = "James David Clarke", email = "james@jamesdavidclarke.com"},
 ]
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-particleplayground = "particleplayground.game:main"
+particleplayground = "src.game:main"
 
 [project.optional-dependencies]
 dev = [
@@ -30,6 +30,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools_scm]
+write_to = "src/__init__.py"
 
 [tool.black]
 line-length = 88
